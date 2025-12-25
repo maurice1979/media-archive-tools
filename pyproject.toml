@@ -1,0 +1,33 @@
+[project]
+name = "nas_access"
+version = "0.1.0"
+description = "Tools for organizing with photos and videos."
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    { name = "Jordi Vidal de Llobatera", email = "is.maurice@protonmail.com" },
+]
+dependencies = [
+    "dotenv>=0.9.9",
+    "ffmpeg-python>=0.2.0",
+    "ipykernel>=7.1.0",
+    "ipython>=9.8.0",
+    "loguru>=0.7.3",
+    "pillow>=12.0.0",
+]
+
+[tool.ruff]
+line-length = 120
+lint.select = [
+    "D",  # Pydocstyle
+    "E",  # PEP 8 error codes (including line length)
+    "F",  # Flake 8 error types
+    "I",  # Sort imports
+]
+lint.ignore = ["D203", "D213"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "ruff>=0.14.10",
+]
