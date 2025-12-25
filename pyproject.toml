@@ -1,5 +1,5 @@
 [project]
-name = "nas_access"
+name = "media-archive-tools"
 version = "0.1.0"
 description = "Tools for organizing with photos and videos."
 readme = "README.md"
