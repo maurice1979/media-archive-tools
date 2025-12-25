@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Organize new media",
+      "type": "python",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/src/media_archive/organizer.py",
+      "args": [
+        "--source-folder", "/Volumes/photo/movil_maurice", // 
+        "--target-folder", "/Volumes/photo",  // 
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "UV_ACTIVE": "1"
+      }
+    },
+    {
+      "name": "Delete duplicate media",
+      "type": "python",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/src/media_archive/deduplicate.py",
+      "args": [
+        "--target-folder", "/Volumes/photo", // 
+        "--dry-run",
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "UV_ACTIVE": "1"
+      }
+    },
+  ]
+}
