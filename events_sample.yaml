@@ -1,0 +1,8 @@
+events:
+  - name: holidays
+    start: 20250826
+    end: 20250902
+
+  - name: wedding
+    start: 20240614
+    end: 20240615

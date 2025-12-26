@@ -1,16 +1,17 @@
 """Organize photos and videos."""
 
 import argparse
+import datetime
 import re
 import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Tuple
 
 import ffmpeg
-from config import DEST_ROOT, PHOTO_EXTS, VIDEO_EXTS
+from config import PHOTO_EXTS, VIDEO_EXTS
 from loguru import logger
 from PIL import ExifTags, Image
+from utils import load_events
 
 # Regex to extract YYYYMMDD
 DATE_RE = re.compile(r"(\d{4})(\d{2})(\d{2})")
@@ -18,8 +19,25 @@ DATE_RE = re.compile(r"(\d{4})(\d{2})(\d{2})")
 EXIF_TAGS = {v: k for k, v in ExifTags.TAGS.items()}
 
 
-def get_date_from_filename(path: Path) -> Tuple[str | None, str | None]:
-    """Extract year and year-month from filename using regex.
+def get_year_month_day(dt: datetime.datetime) -> Tuple[str, str, str]:
+    """Extract year, year-month, and day as strings from a datetime object.
+
+    Parameters
+    ----------
+    dt : datetime.datetime
+        Datetime object to extract components from.
+
+    Returns
+    -------
+    Tuple[str, str, str]
+        Year, year-month, and day as strings.
+
+    """
+    return str(dt.year), f"{dt.year}{dt.month:02d}", f"{dt.day:02d}"
+
+
+def get_date_from_filename(path: Path) -> datetime.datetime | None:
+    """Extract datetime from filename using regex.
 
     Parameters
     ----------
@@ -28,19 +46,19 @@ def get_date_from_filename(path: Path) -> Tuple[str | None, str | None]:
 
     Returns
     -------
-    Tuple[str | None, str | None]
-        Year and year-month if found, else None.
+    datetime.datetime
+        If datetime could be extracted else None.
 
     """
     match = DATE_RE.search(path.name)
     if match:
-        year, month, _ = match.groups()
-        return str(year), f"{year}{month}"
-    return None, None
+        year, month, day = match.groups()
+        return datetime.datetime(int(year), int(month), int(day))
+    return None
 
 
-def get_date_from_image_exif(path: Path) -> Tuple[str | None, str | None]:
-    """Extract year and year-month from image EXIF metadata.
+def get_date_from_image_exif(path: Path) -> datetime.datetime | None:
+    """Extract datetime from image EXIF metadata.
 
     Parameters
     ----------
@@ -49,8 +67,8 @@ def get_date_from_image_exif(path: Path) -> Tuple[str | None, str | None]:
 
     Returns
     -------
-    Tuple[str | None, str | None]
-        Year and year-month if found, else None.
+    datetime.datetime
+        If datetime could be extracted else None.
 
     """
     try:
@@ -60,15 +78,14 @@ def get_date_from_image_exif(path: Path) -> Tuple[str | None, str | None]:
                 for tag in ("DateTimeOriginal", "DateTimeDigitized", "DateTime"):
                     tag_id = EXIF_TAGS.get(tag)
                     if tag_id in exif:
-                        dt = datetime.strptime(exif[tag_id], "%Y:%m:%d %H:%M:%S")
-                        return str(dt.year), f"{dt.year}{dt.month:02d}"
+                        return datetime.datetime.strptime(exif[tag_id], "%Y:%m:%d %H:%M:%S")
     except Exception:
         logger.info(f"EXIF : {path}")
-    return None, None
+    return None
 
 
-def get_date_from_video(path: Path) -> Tuple[str | None, str | None]:
-    """Extract year and year-month from video metadata using ffmpeg.
+def get_date_from_video(path: Path) -> datetime.datetime | None:
+    """Extract datetime from video metadata using ffmpeg.
 
     Parameters
     ----------
@@ -77,8 +94,8 @@ def get_date_from_video(path: Path) -> Tuple[str | None, str | None]:
 
     Returns
     -------
-    Tuple[str | None, str | None]
-        Year and year-month if found, else None.
+    datetime.datetime
+        If datetime could be extracted else None.
 
     """
     try:
@@ -86,15 +103,14 @@ def get_date_from_video(path: Path) -> Tuple[str | None, str | None]:
         tags = probe.get("format", {}).get("tags", {})
         ct = tags.get("creation_time")
         if ct:
-            dt = datetime.fromisoformat(ct.replace("Z", ""))
-            return str(dt.year), f"{dt.year}{dt.month:02d}"
+            return datetime.datetime.fromisoformat(ct.replace("Z", ""))
     except Exception:
         logger.info(f"VIDEO : {path}")
-    return None, None
+    return None
 
 
-def get_date_from_file(path: Path) -> Tuple[str | None, str | None]:
-    """Extract year and year-month from file's modification time.
+def get_date_from_file(path: Path) -> datetime.datetime | None:
+    """Extract datetime from file's modification time.
 
     Parameters
     ----------
@@ -103,20 +119,19 @@ def get_date_from_file(path: Path) -> Tuple[str | None, str | None]:
 
     Returns
     -------
-    Tuple[str | None, str | None]
-        Year and year-month if found, else None.
+    datetime.datetime
+        If datetime could be extracted else None.
 
     """
     try:
-        dt = datetime.fromtimestamp(path.stat().st_mtime)
-        return str(dt.year), f"{dt.year}{dt.month:02d}"
+        return datetime.datetime.fromtimestamp(path.stat().st_mtime)
     except Exception:
         logger.info(f"Fallback : {path}")
-        return None, None
+        return None
 
 
-def extract_date(path: Path) -> Tuple[str | None, str | None]:
-    """Extract year and year-month from file using filename, EXIF, video metadata, or file date.
+def extract_date(path: Path) -> datetime.datetime | None:
+    """Extract datetime from file using filename, EXIF, video metadata, or file date.
 
     Parameters
     ----------
@@ -125,42 +140,96 @@ def extract_date(path: Path) -> Tuple[str | None, str | None]:
 
     Returns
     -------
-    Tuple[str | None, str | None]
-        Year and year-month if found, else None.
+    datetime.datetime
+        If datetime could be extracted else None.
 
     """
     # 1️⃣ Extract date from Filename
-    year, month = get_date_from_filename(path)
-    if year and month:
-        return year, month
+    dt = get_date_from_filename(path)
+    if dt:
+        return dt
 
     # 2️⃣ Extract date from Photo EXIF
     if path.suffix.lower() in PHOTO_EXTS:
-        year, month = get_date_from_image_exif(path)
-        if year and month:
-            return year, month
+        dt = get_date_from_image_exif(path)
+        if dt:
+            return dt
 
     # 3️⃣ Extract date from Video metadata
     elif path.suffix.lower() in VIDEO_EXTS:
-        year, month = get_date_from_video(path)
-        if year and month:
-            return year, month
+        dt = get_date_from_video(path)
+        if dt:
+            return dt
 
     # 4️⃣ Filesystem fallback - Extract date from creation date
-    year, month = get_date_from_file(path)
-    if year and month:
-        return year, month
+    dt = get_date_from_file(path)
+    if dt:
+        return dt
 
-    return None, None
+    return None
 
 
-def process_file(path: Path) -> bool:
+def group_by_events(target_folder: Path, events_file: Path, dry_run: bool = True) -> None:
+    """Organize files in the target folder into event-based subfolders based on date ranges from an events file.
+
+    Parameters
+    ----------
+    target_folder : Path
+        Root folder containing year/month subfolders with media files.
+    events_file : Path
+        Path to the YAML file containing event definitions (with 'start', 'end', and 'name').
+    dry_run : bool, optional
+        If True, only print the actions that would be taken, do not move files (default is True).
+
+    Returns
+    -------
+    None
+
+    """
+    events = load_events(events_file)
+
+    for year_dir in target_folder.iterdir():
+        if not year_dir.is_dir() or not year_dir.name.isdigit():
+            continue
+
+        for month_dir in year_dir.iterdir():
+            if not month_dir.is_dir() or not month_dir.name.isdigit():
+                continue
+
+            for path in month_dir.iterdir():
+                if not path.is_file():
+                    continue
+
+                date = extract_date(path)
+                if not date:
+                    continue
+
+                for event in events:
+                    if event["start"] <= date.date() <= event["end"]:
+                        event_root = (
+                            target_folder / str(event["start"].year) / event["start"].strftime("%Y%m") / event["name"]
+                        )
+                        event_root.mkdir(parents=True, exist_ok=True)
+
+                        dest = event_root / path.name
+
+                        if dry_run:
+                            print(f"🧪 Would move {path} → {dest}")
+                        else:
+                            shutil.move(path, dest)
+
+                        break  # one event per file
+
+
+def process_file(path: Path, target_folder: Path) -> bool:
     """Organize file by moving/copying it to the appropriate folder based on its date and type.
 
     Parameters
     ----------
     path : Path
         Path to the file to process.
+    target_folder : Path
+        Root folder in which the media file will be moved.
 
     Returns
     -------
@@ -168,17 +237,21 @@ def process_file(path: Path) -> bool:
         True if file was moved/copied, False otherwise.
 
     """
-    date_info = extract_date(path)
-    if not date_info:
+    file_date = extract_date(path)
+    if not file_date:
         logger.info(f"⚠️  Skipping (no date): {path.name}")
         return False
 
-    year, year_month = date_info
+    year, year_month, _ = get_year_month_day(file_date)
+    if not year or not year_month:
+        return False
+
+    # Get file extension
     ext = path.suffix.lower()
 
     # Photo
     if ext in PHOTO_EXTS:
-        dest_dir = DEST_ROOT / year / year_month
+        dest_dir = target_folder / year / year_month
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / path.name
 
@@ -188,7 +261,7 @@ def process_file(path: Path) -> bool:
 
     # Video
     elif ext in VIDEO_EXTS:
-        dest_dir = DEST_ROOT / year / year_month / "video"
+        dest_dir = target_folder / year / year_month / "video"
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / path.name
 
@@ -227,13 +300,17 @@ if __name__ == "__main__":
     counter_skipped: int = 0
     for item in source_folder.iterdir():
         if item.is_file():
-            file_moved: bool = process_file(item)
+            file_moved: bool = process_file(item, target_folder)
             if file_moved:
                 counter += 1
             else:
                 counter_skipped += 1
             if counter % 50 == 0:
                 logger.info(f"---- So far Processed {counter} files")
+
+    events_file = Path.cwd() / "events.yaml"
+    group_by_events(target_folder, events_file, dry_run=True)
+
     if counter > 0:
         logger.info(f"Finished moving {counter} images and videos! (skipped {counter_skipped} files)")
     else:

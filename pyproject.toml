@@ -1,7 +1,7 @@
 [project]
 name = "media-archive-tools"
 version = "0.1.0"
-description = "Tools for organizing with photos and videos."
+description = "Tools for organizing and deduplicating personal photo/video archives"
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [
@@ -16,6 +16,12 @@ dependencies = [
     "pillow>=12.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "ruff>=0.14.10",
+]
+
 [tool.ruff]
 line-length = 120
 lint.select = [
@@ -25,9 +31,3 @@ lint.select = [
     "I",  # Sort imports
 ]
 lint.ignore = ["D203", "D213"]
-
-[dependency-groups]
-dev = [
-    "pre-commit>=4.5.1",
-    "ruff>=0.14.10",
-]

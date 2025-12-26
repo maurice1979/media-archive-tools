@@ -31,3 +31,6 @@ reports/
 .git_bckp
 *-checkpoint.py
 .idea/
+
+# Private events to be grouped in separate folders
+events.yaml
