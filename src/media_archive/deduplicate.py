@@ -1,14 +1,12 @@
 """Deduplicate photos."""
 # TODO: Deduplicate videos too
 
-import argparse
 import hashlib
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List
 
-from config import PHOTO_EXTS
-from loguru import logger
+from media_archive.config import PHOTO_EXTS
 
 
 def file_hash(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -52,6 +50,7 @@ def collect_files(path: Path, type: str = "photo") -> List[Path]:
 
     """
     # Return list of files of type photo/video."""
+    extensions = set()
     if type == "photo":
         extensions = PHOTO_EXTS
     elif type == "video":
@@ -65,13 +64,15 @@ def collect_files(path: Path, type: str = "photo") -> List[Path]:
     return files
 
 
-def find_duplicates(files: List[Path]) -> Dict[str, List[Path]]:
+def find_duplicates(files: List[Path], log: None) -> Dict[str, List[Path]]:
     """Find duplicate files by grouping by size and then by hash.
 
     Parameters
     ----------
     files : List[Path]
         List of file paths to check for duplicates.
+    log : log, optional
+        log to use for logging errors.
 
     Returns
     -------
@@ -94,7 +95,8 @@ def find_duplicates(files: List[Path]) -> Dict[str, List[Path]]:
                 h = file_hash(f)
                 hash_groups[h].append(f)
             except Exception as e:
-                logger.error(f"⚠️ Error hashing {f}: {e}")
+                if log:
+                    log.error(f"⚠️ Error hashing {f}: {e}")
 
     # 3️⃣ Keep only real duplicates
     duplicates = {h: files for h, files in hash_groups.items() if len(files) > 1}
@@ -102,7 +104,7 @@ def find_duplicates(files: List[Path]) -> Dict[str, List[Path]]:
     return duplicates
 
 
-def delete_duplicates(duplicates: Dict[str, List[Path]], is_dry_run: bool = False) -> None:
+def delete_duplicates(duplicates: Dict[str, List[Path]], log, is_dry_run: bool = False) -> None:
     """Delete duplicate files, keeping one copy per group.
 
     Parameters
@@ -111,6 +113,8 @@ def delete_duplicates(duplicates: Dict[str, List[Path]], is_dry_run: bool = Fals
         Dictionary mapping hash to list of duplicate file paths.
     is_dry_run : bool, optional
         If True, only log actions without deleting files.
+    log : Logger, optional
+        Logger to use for logging actions.
 
     Returns
     -------
@@ -124,48 +128,16 @@ def delete_duplicates(duplicates: Dict[str, List[Path]], is_dry_run: bool = Fals
         keep = files_sorted[0]
         remove = files_sorted[1:]
 
-        logger.info(f"\n🟢 Keeping: {keep}")
+        log.info(f"\n🟢 Keeping: {keep}")
         for f in remove:
             if is_dry_run:
-                logger.info(f"🧪 Would delete: {f}")
+                log.info(f"🧪 Would delete: {f}")
             else:
                 try:
                     f.unlink()
-                    logger.info(f"❌ Deleted: {f}")
+                    log.info(f"❌ Deleted: {f}")
                     total_deleted += 1
                 except Exception as e:
-                    logger.error(f"⚠️ Failed to delete {f}: {e}")
+                    log.error(f"⚠️ Failed to delete {f}: {e}")
 
-    logger.info(f"\n✅ Total duplicates removed: {total_deleted}")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Organize pictures and videos")
-    parser.add_argument(
-        "--target-folder",
-        "-tf",
-        type=str,
-        default="/Volumes/photo/movil_maurice",
-        help="Folder in which duplicates have to be found",
-    )
-    parser.add_argument(
-        "-dr",
-        "--dry-run",
-        default=False,
-        action="store_true",
-        help="Execute dry run",
-    )
-    args = parser.parse_args()
-
-    target_folder: Path = Path(args.target_folder)
-    is_dry_run: bool = args.dry_run
-
-    logger.info("📂 Scanning files...")
-    files: List[Path] = collect_files(path=target_folder)
-    logger.info(f"📸 Found {len(files)} media files in {target_folder}")
-
-    logger.info("🔍 Finding duplicates...")
-    duplicates: Dict[str, List[Path]] = find_duplicates(files)
-    logger.info(f"🧬 Found {len(duplicates)} duplicate groups")
-
-    delete_duplicates(duplicates, is_dry_run=is_dry_run)
+    log.info(f"✅ Total duplicates removed: {total_deleted}")

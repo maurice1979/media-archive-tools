@@ -10,7 +10,19 @@ Tools to organize, deduplicate, and audit personal photo and video archives, wit
 - Dry-run support
 
 ## Usage
-[TBD]
+
+### Media Organizer
+
+```bash
+mat-cli organize -sf /Users/jvidal/Downloads -tf /tmp/images
+```
+
+### Photo deduplication
+
+```bash
+mat-cli deduplicate -tf /private/tmp/2025/202507 [--dry-run]
+```
+
 
 ## Safety
 

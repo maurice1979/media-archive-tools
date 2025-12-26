@@ -8,6 +8,7 @@ authors = [
     { name = "Jordi Vidal de Llobatera", email = "is.maurice@protonmail.com" },
 ]
 dependencies = [
+    "click>=8.3.1",
     "dotenv>=0.9.9",
     "ffmpeg-python>=0.2.0",
     "ipykernel>=7.1.0",
@@ -21,6 +22,15 @@ dev = [
     "pre-commit>=4.5.1",
     "ruff>=0.14.10",
 ]
+
+[project.scripts]
+mat-cli = "media_archive.cli:mat"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
 line-length = 120

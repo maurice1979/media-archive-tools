@@ -1,6 +1,5 @@
 """Organize photos and videos."""
 
-import argparse
 import datetime
 import re
 import shutil
@@ -8,10 +7,10 @@ from pathlib import Path
 from typing import Tuple
 
 import ffmpeg
-from config import PHOTO_EXTS, VIDEO_EXTS
-from loguru import logger
 from PIL import ExifTags, Image
-from utils import load_events
+
+from media_archive.config import PHOTO_EXTS, VIDEO_EXTS
+from media_archive.utils import load_events
 
 # Regex to extract YYYYMMDD
 DATE_RE = re.compile(r"(\d{4})(\d{2})(\d{2})")
@@ -57,13 +56,15 @@ def get_date_from_filename(path: Path) -> datetime.datetime | None:
     return None
 
 
-def get_date_from_image_exif(path: Path) -> datetime.datetime | None:
+def get_date_from_image_exif(path: Path, log=None) -> datetime.datetime | None:
     """Extract datetime from image EXIF metadata.
 
     Parameters
     ----------
     path : Path
         Path to the image file.
+    log : Logger, optional
+        Logger object.
 
     Returns
     -------
@@ -73,24 +74,27 @@ def get_date_from_image_exif(path: Path) -> datetime.datetime | None:
     """
     try:
         with Image.open(path) as img:
-            exif = img._getexif()
+            exif = img.getexif()
             if exif:
                 for tag in ("DateTimeOriginal", "DateTimeDigitized", "DateTime"):
                     tag_id = EXIF_TAGS.get(tag)
-                    if tag_id in exif:
+                    if tag_id is not None and tag_id in exif:
                         return datetime.datetime.strptime(exif[tag_id], "%Y:%m:%d %H:%M:%S")
     except Exception:
-        logger.info(f"EXIF : {path}")
+        if log:
+            log.info(f"EXIF : {path}")
     return None
 
 
-def get_date_from_video(path: Path) -> datetime.datetime | None:
+def get_date_from_video(path: Path, log=None) -> datetime.datetime | None:
     """Extract datetime from video metadata using ffmpeg.
 
     Parameters
     ----------
     path : Path
         Path to the video file.
+    log : Logger, optional
+        Logger object.
 
     Returns
     -------
@@ -105,17 +109,20 @@ def get_date_from_video(path: Path) -> datetime.datetime | None:
         if ct:
             return datetime.datetime.fromisoformat(ct.replace("Z", ""))
     except Exception:
-        logger.info(f"VIDEO : {path}")
+        if log:
+            log.info(f"VIDEO : {path}")
     return None
 
 
-def get_date_from_file(path: Path) -> datetime.datetime | None:
+def get_date_from_file(path: Path, log=None) -> datetime.datetime | None:
     """Extract datetime from file's modification time.
 
     Parameters
     ----------
     path : Path
         Path to the file.
+    log : Logger, optional
+        Logger object.
 
     Returns
     -------
@@ -126,17 +133,20 @@ def get_date_from_file(path: Path) -> datetime.datetime | None:
     try:
         return datetime.datetime.fromtimestamp(path.stat().st_mtime)
     except Exception:
-        logger.info(f"Fallback : {path}")
+        if log:
+            log.info(f"Fallback : {path}")
         return None
 
 
-def extract_date(path: Path) -> datetime.datetime | None:
+def extract_date(path: Path, log=None) -> datetime.datetime | None:
     """Extract datetime from file using filename, EXIF, video metadata, or file date.
 
     Parameters
     ----------
     path : Path
         Path to the file.
+    log : Logger, optional
+        Logger object.
 
     Returns
     -------
@@ -151,25 +161,25 @@ def extract_date(path: Path) -> datetime.datetime | None:
 
     # 2️⃣ Extract date from Photo EXIF
     if path.suffix.lower() in PHOTO_EXTS:
-        dt = get_date_from_image_exif(path)
+        dt = get_date_from_image_exif(path, log=log)
         if dt:
             return dt
 
     # 3️⃣ Extract date from Video metadata
     elif path.suffix.lower() in VIDEO_EXTS:
-        dt = get_date_from_video(path)
+        dt = get_date_from_video(path, log=log)
         if dt:
             return dt
 
     # 4️⃣ Filesystem fallback - Extract date from creation date
-    dt = get_date_from_file(path)
+    dt = get_date_from_file(path, log=log)
     if dt:
         return dt
 
     return None
 
 
-def group_by_events(target_folder: Path, events_file: Path, dry_run: bool = True) -> None:
+def group_by_events(target_folder: Path, events_file: Path, dry_run: bool = True, log=None) -> None:
     """Organize files in the target folder into event-based subfolders based on date ranges from an events file.
 
     Parameters
@@ -180,6 +190,8 @@ def group_by_events(target_folder: Path, events_file: Path, dry_run: bool = True
         Path to the YAML file containing event definitions (with 'start', 'end', and 'name').
     dry_run : bool, optional
         If True, only print the actions that would be taken, do not move files (default is True).
+    log : Logger, optional
+        Logger object.
 
     Returns
     -------
@@ -200,7 +212,7 @@ def group_by_events(target_folder: Path, events_file: Path, dry_run: bool = True
                 if not path.is_file():
                     continue
 
-                date = extract_date(path)
+                date = extract_date(path, log=log)
                 if not date:
                     continue
 
@@ -214,14 +226,17 @@ def group_by_events(target_folder: Path, events_file: Path, dry_run: bool = True
                         dest = event_root / path.name
 
                         if dry_run:
-                            print(f"🧪 Would move {path} → {dest}")
+                            if log:
+                                log.info(f"🧪 Would move {path} → {dest}")
                         else:
                             shutil.move(path, dest)
+                            if log:
+                                log.info(f"Moved {path} → {dest}")
 
                         break  # one event per file
 
 
-def process_file(path: Path, target_folder: Path) -> bool:
+def process_file(path: Path, target_folder: Path, log=None) -> bool:
     """Organize file by moving/copying it to the appropriate folder based on its date and type.
 
     Parameters
@@ -230,6 +245,8 @@ def process_file(path: Path, target_folder: Path) -> bool:
         Path to the file to process.
     target_folder : Path
         Root folder in which the media file will be moved.
+    log : Logger, optional
+        Logger object.
 
     Returns
     -------
@@ -237,9 +254,10 @@ def process_file(path: Path, target_folder: Path) -> bool:
         True if file was moved/copied, False otherwise.
 
     """
-    file_date = extract_date(path)
+    file_date = extract_date(path, log=log)
     if not file_date:
-        logger.info(f"⚠️  Skipping (no date): {path.name}")
+        if log:
+            log.debug(f"⚠️  Skipping (no date): {path.name}")
         return False
 
     year, year_month, _ = get_year_month_day(file_date)
@@ -256,7 +274,8 @@ def process_file(path: Path, target_folder: Path) -> bool:
         dest_path = dest_dir / path.name
 
         shutil.move(path, dest_path)
-        logger.info(f"📷 Moved photo → {dest_path}")
+        if log:
+            log.info(f"📷 Moved photo → {dest_path}")
         return True
 
     # Video
@@ -266,52 +285,11 @@ def process_file(path: Path, target_folder: Path) -> bool:
         dest_path = dest_dir / path.name
 
         shutil.copy2(path, dest_path)
-        logger.info(f"🎥 Copied video → {dest_path}")
+        if log:
+            log.info(f"🎥 Copied video → {dest_path}")
         return True
 
     else:
-        logger.info(f"⚠️  Skipping (unknown type): {path.name}")
+        if log:
+            log.info(f"⚠️  Skipping (unknown type): {path.name}")
         return False
-
-
-if __name__ == "__main__":
-    # Set-up argument parser
-    parser = argparse.ArgumentParser(description="Organize pictures and videos")
-    parser.add_argument(
-        "--source-folder",
-        "-sf",
-        type=str,
-        default="/Volumes/photo/movil_maurice",
-        help="Folder with pictures and videos to be organized",
-    )
-    parser.add_argument(
-        "--target-folder",
-        "-tf",
-        type=str,
-        default="/Volumes/photo",
-        help="Folder to save organized pictures and videos",
-    )
-    args = parser.parse_args()
-
-    source_folder: Path = Path(args.source_folder)
-    target_folder: Path = Path(args.target_folder)
-
-    counter: int = 0
-    counter_skipped: int = 0
-    for item in source_folder.iterdir():
-        if item.is_file():
-            file_moved: bool = process_file(item, target_folder)
-            if file_moved:
-                counter += 1
-            else:
-                counter_skipped += 1
-            if counter % 50 == 0:
-                logger.info(f"---- So far Processed {counter} files")
-
-    events_file = Path.cwd() / "events.yaml"
-    group_by_events(target_folder, events_file, dry_run=True)
-
-    if counter > 0:
-        logger.info(f"Finished moving {counter} images and videos! (skipped {counter_skipped} files)")
-    else:
-        logger.info("No files were organized")
