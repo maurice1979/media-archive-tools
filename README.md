@@ -13,11 +13,23 @@ Tools to organize, deduplicate, and audit personal photo and video archives, wit
 
 ### Media Organizer
 
+Move media files from source folder to target folder (`-tf`) into year-month directories (`YYYY/YYYYMM`)
+
 ```bash
 mat-cli organize -sf /Users/jvidal/Downloads -tf /tmp/images
 ```
 
+### Events subfolders
+
+Classify photos from events into specific subfolders: `YYYY/YYYYMM/<event-name>`
+
+```bash
+mat-cli events -tf /tmp/images -ef events.yaml
+```
+
 ### Photo deduplication
+
+Look for duplicate images, delete the duplicates.
 
 ```bash
 mat-cli deduplicate -tf /private/tmp/2025/202507 [--dry-run]
