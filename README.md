@@ -16,7 +16,7 @@ Tools to organize, deduplicate, and audit personal photo and video archives, wit
 Move media files from source folder to target folder (`-tf`) into year-month directories (`YYYY/YYYYMM`)
 
 ```bash
-mat-cli organize -sf /Users/jvidal/Downloads -tf /tmp/images
+mat-cli organize -sf /Users/jvidal/Downloads -tf /tmp/images [--sort-events]
 ```
 
 ### Events subfolders

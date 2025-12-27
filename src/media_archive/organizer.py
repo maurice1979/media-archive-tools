@@ -266,6 +266,9 @@ def group_by_events(target_folder: Path, events_file: Path, dry_run: bool = True
 
                         break  # one event per file
 
+    if log:
+        log.info("Finished moving media to events subfolders!")
+
 
 def process_file(path: Path, target_folder: Path, log=None) -> bool:
     """Organize file by moving/copying it to the appropriate folder based on its date and type.

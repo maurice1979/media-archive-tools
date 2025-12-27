@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 from loguru import logger as log
 
+from media_archive.config import debug_fmt, short_fmt
 from media_archive.deduplicate import collect_files, delete_duplicates, find_duplicates
 from media_archive.organizer import group_by_events, process_file
 
@@ -54,10 +55,14 @@ def mat(ctx: click.Context, debug: bool, show_version: bool, logfile_enabled: bo
     level = "DEBUG" if debug else "INFO"
 
     log.remove()
-    log.add(sys.stderr, level=level)
-
-    if logfile_enabled:
-        log.add(LOG_FILE, rotation="10 MB", retention="7 days", level=level)
+    if debug:
+        log.add(sys.stderr, level=level, format=debug_fmt)
+        if logfile_enabled:
+            log.add(LOG_FILE, rotation="10 MB", retention="7 days", level=level, format=debug_fmt)
+    else:
+        log.add(sys.stderr, level=level, format=short_fmt)
+        if logfile_enabled:
+            log.add(LOG_FILE, rotation="10 MB", retention="7 days", level=level, format=short_fmt)
 
     log.info("Welcome to Media Archive Tools")
 
@@ -77,13 +82,14 @@ def mat(ctx: click.Context, debug: bool, show_version: bool, logfile_enabled: bo
     required=True,
     help="Folder to save organized pictures and videos",
 )
-@click.option("--dry-run/--no-dry-run", default=True, help="If set, only print actions without moving files.")
+@click.option("--dry-run/--no-dry-run", default=False, help="If set, only print actions without moving files.")
+@click.option("--sort-events/--no-sort-events", default=False, help="If set, sort events.")
 @click.pass_context
-def organize(ctx, source_folder: Path, target_folder: Path, dry_run: bool):
+def organize(ctx, source_folder: Path, target_folder: Path, dry_run: bool, sort_events: bool):
     """Organize media files from source to target folder."""
     counter: int = 0
     counter_skipped: int = 0
-    log.info("Started organizing new media...")
+    log.info(f"Started organizing new media {'(dry_run)' if dry_run else ''}...")
     for item in source_folder.iterdir():
         if item.is_file():
             file_moved: bool = process_file(item, target_folder, log=log)
@@ -94,13 +100,12 @@ def organize(ctx, source_folder: Path, target_folder: Path, dry_run: bool):
             if counter % 100 == 0:
                 log.info(f"---- So far Processed {counter} files")
 
-    # Use events.yaml from the root directory of the package
-    group_by_events(target_folder, events_file, dry_run=dry_run, log=log)
+    log.info(f"Finished moving media files. Files moved: {counter}; skipped: {counter_skipped}")
 
-    if counter > 0:
-        log.info(f"Finished moving {counter} images and videos! (skipped {counter_skipped} files)")
-    else:
-        log.info("No files were organized")
+    if sort_events:
+        log.info(f"Started organizing new media {'(dry_run)' if dry_run else ''}...")
+        # Use events.yaml from the root directory of the package
+        group_by_events(target_folder, events_file, dry_run=dry_run, log=log)
 
 
 # Events
@@ -112,17 +117,11 @@ def organize(ctx, source_folder: Path, target_folder: Path, dry_run: bool):
     required=True,
     help="Root folder containing year/month subfolders with media files",
 )
-@click.option(
-    "--events-file",
-    "-ef",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
-    required=True,
-    help="Path to the YAML file containing event definitions",
-)
-@click.option("--dry-run/--no-dry-run", default=True, help="If set, only print actions without moving files.")
+@click.option("--dry-run/--no-dry-run", default=False, help="If set, only print actions without moving files.")
 @click.pass_context
 def events(ctx, target_folder: Path, events_file: Path, dry_run: bool):
     """Group media files in the target folder by events from a YAML file."""
+    log.info(f"Started organizing new media {'(dry_run)' if dry_run else ''}...")
     group_by_events(target_folder, events_file, dry_run=dry_run, log=log)
 
 
@@ -137,7 +136,7 @@ def events(ctx, target_folder: Path, events_file: Path, dry_run: bool):
     required=True,
     help="Folder in which duplicates have to be found",
 )
-@click.option("--dry-run", default=False, help="If set, only print actions without deleting files.")
+@click.option("--dry-run/--no-dry-run", default=False, help="If set, only print actions without deleting files.")
 def deduplicate(target_folder: Path, dry_run: bool):
     """Deduplicate repeated images in the target folder."""
     log.info("📂 Scanning files...")

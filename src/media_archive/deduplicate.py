@@ -2,7 +2,7 @@
 # TODO: Deduplicate videos too
 
 import hashlib
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, List
 
@@ -104,6 +104,43 @@ def find_duplicates(files: List[Path], log: None) -> Dict[str, List[Path]]:
     return duplicates
 
 
+def is_copy_variant(f: Path, original_stem: str, ext: str) -> bool:
+    """Determine if a file is a copy or variant of the original file name.
+
+    Parameters
+    ----------
+    f : Path
+        File path to check.
+    original_stem : str
+        The stem (base name) of the original file.
+    ext : str
+        The file extension (without dot).
+
+    Returns
+    -------
+    bool
+        True if the file is a copy or variant, False otherwise.
+
+    Examples
+    --------
+    >>> is_copy_variant(Path('IMG_1234_copy.jpg'), 'IMG_1234', 'jpg')
+    True
+    >>> is_copy_variant(Path('IMG_1234_.jpg'), 'IMG_1234', 'jpg')
+    True
+    >>> is_copy_variant(Path('IMG_1234.jpg'), 'IMG_1234', 'jpg')
+    False
+
+    """
+    name = f.name.lower()
+    # Check for 'copy' in name or underscore variant
+    return (
+        "copy" in name
+        or name == f"{original_stem}_.{ext}"
+        or name.startswith(f"{original_stem}_copy")
+        or name.startswith(f"copy_of_{original_stem}")
+    )
+
+
 def delete_duplicates(duplicates: Dict[str, List[Path]], log, is_dry_run: bool = False) -> None:
     """Delete duplicate files, keeping one copy per group.
 
@@ -124,11 +161,31 @@ def delete_duplicates(duplicates: Dict[str, List[Path]], log, is_dry_run: bool =
     total_deleted = 0
 
     for h, files in duplicates.items():
-        files_sorted = sorted(files)
-        keep = files_sorted[0]
-        remove = files_sorted[1:]
+        # Try to keep the most original file (not a copy or underscore variant)
 
-        log.info(f"\n🟢 Keeping: {keep}")
+        # Use the most basic name as the original
+        stems = [f.stem for f in files]
+        # Remove trailing underscores for comparison
+        stems_clean = [s.rstrip("_") for s in stems]
+        # Most common stem is likely the original
+
+        stem_counter = Counter(stems_clean)
+        original_stem = stem_counter.most_common(1)[0][0]
+        ext = files[0].suffix.lstrip(".")
+
+        # Prefer to keep the file that matches the original stem and not a copy variant
+        keep_candidates = [
+            f for f in files if f.stem.rstrip("_") == original_stem and not is_copy_variant(f, original_stem, ext)
+        ]
+        if keep_candidates:
+            keep = sorted(keep_candidates)[0]
+        else:
+            # Fallback: just keep the first sorted
+            keep = sorted(files)[0]
+
+        remove = [f for f in files if f != keep]
+
+        log.info(f"🟢 Keeping: {keep}")
         for f in remove:
             if is_dry_run:
                 log.info(f"🧪 Would delete: {f}")
