@@ -35,13 +35,33 @@ def get_year_month_day(dt: datetime.datetime) -> Tuple[str, str, str]:
     return str(dt.year), f"{dt.year}{dt.month:02d}", f"{dt.day:02d}"
 
 
-def get_date_from_filename(path: Path) -> datetime.datetime | None:
+def validate_ymd_date(year: int, month: int, day: int, min_year: int = 1970, max_year: int = 2050, log=None) -> bool:
+    """Validate year, month, and day are within allowed ranges."""
+    if year < min_year or year > max_year:
+        if log:
+            log.error(f"Parsed year is out of range!: '{year}' [min year: {min_year}; max year: {max_year}]")
+        return False
+    elif month < 1 or month > 12:
+        if log:
+            log.error(f"Parsed month is out of range!: {month}")
+        return False
+    elif day < 1 or day > 31:
+        if log:
+            log.error(f"Parsed day is out of range!: {day}")
+        return False
+
+    return True
+
+
+def get_date_from_filename(path: Path, log: None) -> datetime.datetime | None:
     """Extract datetime from filename using regex.
 
     Parameters
     ----------
     path : Path
         Path to the file.
+    log : Logger, optional
+        Logger object.
 
     Returns
     -------
@@ -52,7 +72,16 @@ def get_date_from_filename(path: Path) -> datetime.datetime | None:
     match = DATE_RE.search(path.name)
     if match:
         year, month, day = match.groups()
-        return datetime.datetime(int(year), int(month), int(day))
+        year_i, month_i, day_i = int(year), int(month), int(day)
+        if not validate_ymd_date(year_i, month_i, day_i, min_year=1970, max_year=2050, log=log):
+            if log:
+                log.error(f"Could not validate inferred date from name {path.name}")
+            return None
+        try:
+            return datetime.datetime(year_i, month_i, day_i)
+        except Exception:
+            if log:
+                log.error(f"Could not infer date from {path.name}")
     return None
 
 
@@ -155,7 +184,7 @@ def extract_date(path: Path, log=None) -> datetime.datetime | None:
 
     """
     # 1️⃣ Extract date from Filename
-    dt = get_date_from_filename(path)
+    dt = get_date_from_filename(path, log)
     if dt:
         return dt
 
@@ -199,6 +228,8 @@ def group_by_events(target_folder: Path, events_file: Path, dry_run: bool = True
 
     """
     events = load_events(events_file)
+    if log:
+        log.info(f"loaded {len(events)} events from 'events.yaml' file...")
 
     for year_dir in target_folder.iterdir():
         if not year_dir.is_dir() or not year_dir.name.isdigit():
@@ -284,9 +315,9 @@ def process_file(path: Path, target_folder: Path, log=None) -> bool:
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / path.name
 
-        shutil.copy2(path, dest_path)
+        shutil.move(path, dest_path)
         if log:
-            log.info(f"🎥 Copied video → {dest_path}")
+            log.info(f"🎥 Moved video → {dest_path}")
         return True
 
     else:
